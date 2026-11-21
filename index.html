@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SFL Link Resolver</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+      padding: 24px; background: #0b1020; color: #edf2ff; }
+    main { width: min(100%, 560px); padding: 28px; border: 1px solid #293653;
+      border-radius: 18px; background: #121a2d; box-shadow: 0 18px 60px #0006; }
+    h1 { margin: 0 0 8px; font-size: 1.5rem; }
+    p { color: #aab7d0; line-height: 1.5; }
+    label { display: block; margin: 18px 0 7px; font-size: .9rem; color: #cbd5e8; }
+    input { width: 100%; padding: 13px 14px; border: 1px solid #354361;
+      border-radius: 10px; background: #0b1222; color: white; font: inherit; }
+    button { width: 100%; margin-top: 20px; padding: 13px; border: 0;
+      border-radius: 10px; background: #7c9cff; color: #081126; font: 700 1rem system-ui;
+      cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #status { min-height: 1.5em; margin-top: 16px; color: #cbd5e8; overflow-wrap: anywhere; }
+    #result { display: none; margin-top: 14px; padding: 14px; border-radius: 10px;
+      background: #0b1222; border: 1px solid #354361; overflow-wrap: anywhere; }
+    #result a { color: #9db5ff; }
+    .small { font-size: .82rem; color: #8796b3; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>SFL Link Resolver</h1>
+  <p>Resolve an <code>sfl.gl</code> short link with one click.</p>
+
+  <label for="shortUrl">Short link</label>
+  <input id="shortUrl" type="url" value="https://sfl.gl/BWEG2u"
+         placeholder="https://sfl.gl/..." autocomplete="url">
+
+  <button id="resolve">Resolve link</button>
+  <div id="status" role="status" aria-live="polite"></div>
+  <div id="result"></div>
+  <p class="small">The API key is configured in this file's JavaScript.</p>
+</main>
+
+<script>
+(() => {
+  const API_KEY = "zpi_q770747wc103bc2168tu9630zb";
+  const endpoint = "https://api.zapi.ink/v1/bypass-tools:safelinku/resolve";
+  const urlInput = document.getElementById("shortUrl");
+  const button = document.getElementById("resolve");
+  const status = document.getElementById("status");
+  const result = document.getElementById("result");
+
+  button.addEventListener("click", async () => {
+    const shortUrl = urlInput.value.trim();
+    result.style.display = "none";
+    result.replaceChildren();
+
+    let parsed;
+    try {
+      parsed = new URL(shortUrl);
+      if (parsed.protocol !== "https:" || !/(^|\.)sfl\.gl$/i.test(parsed.hostname)) {
+        throw new Error("Use an HTTPS sfl.gl link.");
+      }
+    } catch (error) {
+      status.textContent = error.message || "Enter a valid URL.";
+      return;
+    }
+
+    button.disabled = true;
+    status.textContent = "Resolving…";
+    try {
+      const requestUrl = new URL(endpoint);
+      requestUrl.searchParams.set("url", parsed.href);
+      const response = await fetch(requestUrl, {
+        method: "GET",
+        headers: { "x-api-key": API_KEY, "Accept": "application/json" }
+      });
+
+      const bodyText = await response.text();
+      let data;
+      try { data = JSON.parse(bodyText); }
+      catch { throw new Error(`API returned non-JSON (${response.status}): ${bodyText.slice(0, 240)}`); }
+
+      if (!response.ok) {
+        throw new Error(data.message || data.error || `Request failed: HTTP ${response.status}`);
+      }
+
+      const finalUrl = data?.data?.finalUrl || data?.finalUrl ||
+                       data?.data?.url || data?.url;
+      if (!finalUrl) {
+        throw new Error(data.message || "No destination URL found in the API response.");
+      }
+
+      const destination = new URL(finalUrl);
+      if (!["http:", "https:"].includes(destination.protocol)) {
+        throw new Error("The API returned an unsupported destination URL.");
+      }
+
+      status.textContent = "Resolved.";
+      const link = document.createElement("a");
+      link.href = destination.href;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = destination.href;
+      result.append("Destination: ", link);
+      result.style.display = "block";
+    } catch (error) {
+      status.textContent = `${error.message || "Could not resolve the link."} If the browser reports a CORS error, the API must be called through a server-side proxy.`;
+    } finally {
+      button.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
